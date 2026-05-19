@@ -1,15 +1,12 @@
 export default async function handler(req, res) {
-    if (req.method !== "POST") {
-        return res.status(405).json({ error: "POST only" });
-    }
-
     const key = process.env.API_KEY;
 
     if (!key) {
-        return res.status(500).json({ error: "Missing API_KEY" });
+        return res.status(200).json({
+            step: "env",
+            error: "API_KEY missing"
+        });
     }
-
-    const { question, answer } = req.body;
 
     try {
         const response = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
@@ -21,50 +18,24 @@ export default async function handler(req, res) {
             body: JSON.stringify({
                 model: "google/gemma-4-31b-it",
                 messages: [
-                    {
-                        role: "system",
-                        content: "You are a strict teacher. Return ONLY JSON."
-                    },
-                    {
-                        role: "user",
-                        content: `Question: ${question}\nAnswer: ${answer}\nReturn JSON with score and feedback.`
-                    }
+                    { role: "user", content: "Say hello" }
                 ],
-                max_tokens: 1024,
-                temperature: 0.7,
                 stream: false
             })
         });
 
-        const data = await response.json();
+        const raw = await response.text();
 
-        if (!response.ok) {
-            return res.status(500).json({
-                error: "NVIDIA error",
-                status: response.status,
-                details: data
-            });
-        }
-
-        const text = data?.choices?.[0]?.message?.content;
-
-        let parsed;
-
-        try {
-            parsed = JSON.parse(text);
-        } catch {
-            return res.status(500).json({
-                error: "Invalid JSON from AI",
-                raw: text
-            });
-        }
-
-        return res.status(200).json(parsed);
+        return res.status(200).json({
+            step: "api",
+            status: response.status,
+            raw: raw
+        });
 
     } catch (err) {
-        return res.status(500).json({
-            error: "Server crash",
-            details: err.message
+        return res.status(200).json({
+            step: "crash",
+            error: err.message
         });
     }
 }
