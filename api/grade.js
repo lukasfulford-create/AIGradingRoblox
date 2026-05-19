@@ -3,10 +3,10 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "POST only" });
     }
 
-    const key = process.env.GROQ_API_KEY;
+    const key = process.env.OPENROUTER_API_KEY;
 
     if (!key) {
-        return res.status(500).json({ error: "Missing GROQ_API_KEY" });
+        return res.status(500).json({ error: "Missing OPENROUTER_API_KEY" });
     }
 
     const { question, answer } = req.body;
@@ -16,31 +16,24 @@ export default async function handler(req, res) {
     }
 
     try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Authorization": `Bearer ${key}`,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://ai-grading-roblox.vercel.app",
+                "X-Title": "Roblox Quiz AI"
             },
             body: JSON.stringify({
-                model: "llama-3.1-8b-instant",
+                model: "meta-llama/llama-3.1-8b-instruct",
                 messages: [
                     {
                         role: "system",
-                        content: "You are a strict teacher. You MUST return ONLY valid JSON."
+                        content: "You are a strict teacher. Return ONLY valid JSON with score and feedback."
                     },
                     {
                         role: "user",
-                        content: `
-Question: ${question}
-Answer: ${answer}
-
-Return ONLY JSON in this format:
-{
-  "score": number,
-  "feedback": string
-}
-`
+                        content: `Question: ${question}\nAnswer: ${answer}\nGrade 0-100.`
                     }
                 ],
                 temperature: 0.2
@@ -49,10 +42,9 @@ Return ONLY JSON in this format:
 
         const data = await response.json();
 
-        // If Groq fails, return full error for debugging
         if (!response.ok) {
             return res.status(500).json({
-                error: "Groq request failed",
+                error: "OpenRouter error",
                 status: response.status,
                 details: data
             });
@@ -61,7 +53,7 @@ Return ONLY JSON in this format:
         const text = data?.choices?.[0]?.message?.content;
 
         if (!text) {
-            return res.status(500).json({ error: "No response from AI" });
+            return res.status(500).json({ error: "No AI response" });
         }
 
         let parsed;
@@ -70,7 +62,7 @@ Return ONLY JSON in this format:
             parsed = JSON.parse(text);
         } catch (err) {
             return res.status(500).json({
-                error: "AI returned invalid JSON",
+                error: "Invalid JSON from AI",
                 raw: text
             });
         }
