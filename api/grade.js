@@ -3,53 +3,76 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: "POST only" });
     }
 
-    const { question, answer } = req.body;
+    try {
+        const { question, answer } = req.body;
 
-    if (!question || !answer) {
-        return res.status(400).json({ error: "Missing question or answer" });
-    }
+        if (!question || !answer) {
+            return res.status(400).json({ error: "Missing question or answer" });
+        }
 
-    const prompt = `
-You are a strict but fair interviewer grading a student's answer.
+        const response = await fetch(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "llama-3.1-8b-instant",
+                    messages: [
+                        {
+                            role: "system",
+                            content: `
+You are a strict teacher grading student answers.
 
-Question: ${question}
-Student Answer: ${answer}
+You MUST respond ONLY in valid JSON.
 
-Rules:
-- Grade from 0 to 100
-- Be consistent and strict
-- Reward correctness and explanation
-- Penalize wrong or vague answers
-
-Return ONLY valid JSON in this format:
+Format:
 {
   "score": number,
   "feedback": string
 }
-`;
 
-    try {
-        const response = await fetch("https://api.openai.com/v1/responses", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "gpt-4.1-mini",
-                input: prompt
-            })
-        });
+Rules:
+- Score must be 0 to 100
+- Be strict but fair
+- Do NOT include extra text
+`
+                        },
+                        {
+                            role: "user",
+                            content: `
+Question: ${question}
+Answer: ${answer}
+
+Grade this response.
+`
+                        }
+                    ],
+                    temperature: 0.2
+                })
+            }
+        );
 
         const data = await response.json();
 
-        const text = data.output?.[0]?.content?.[0]?.text;
+        const text = data?.choices?.[0]?.message?.content;
 
         if (!text) {
-            return res.status(500).json({ error: "Invalid AI response" });
+            return res.status(500).json({ error: "No AI response" });
         }
 
-        const parsed = JSON.parse(text);
+        let parsed;
+
+        try {
+            parsed = JSON.parse(text);
+        } catch (err) {
+            return res.status(500).json({
+                error: "AI returned invalid JSON",
+                raw: text
+            });
+        }
 
         return res.status(200).json(parsed);
 
